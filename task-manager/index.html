@@ -274,6 +274,9 @@
     font-size: .95rem;
   }
 </style>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -471,14 +474,20 @@ function addTask() {
   if (!title) return;
   var tasks = loadTasks();
   var reminder = document.getElementById('taskReminder').value || '';
+  var desc = document.getElementById('taskDesc').value.trim();
+  var cloudKey = null;
+  if (reminder) {
+    cloudKey = saveReminderToCloud('תזכורת משימה: ' + title, desc || 'הגיע הזמן לטפל במשימה זו', new Date(reminder).getTime());
+  }
   tasks.push({
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     title: title,
-    desc: document.getElementById('taskDesc').value.trim(),
+    desc: desc,
     priority: document.getElementById('taskPriority').value,
     recurring: document.getElementById('taskRecurring').checked,
     reminder: reminder,
     reminderSent: false,
+    reminderKey: cloudKey,
     done: false
   });
   saveTasks(tasks);
@@ -499,7 +508,10 @@ function toggleTask(id) {
 }
 
 function deleteTask(id) {
-  saveTasks(loadTasks().filter(function(x) { return x.id !== id; }));
+  var tasks = loadTasks();
+  var task = tasks.find(function(x) { return x.id === id; });
+  if (task && task.reminderKey) removeReminderFromCloud(task.reminderKey);
+  saveTasks(tasks.filter(function(x) { return x.id !== id; }));
   renderTasks();
 }
 
@@ -586,13 +598,24 @@ function addEvent() {
   if (!events[wk][day]) events[wk][day] = [];
   var notifyEnabled = document.getElementById('eventNotifyToggle').checked;
   var notifyMinutes = parseInt(document.getElementById('eventNotifyMinutes').value) || 0;
+  var evId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  var cloudKey = null;
+  if (notifyEnabled && time) {
+    var eventDate = new Date(currentWeekStart);
+    eventDate.setDate(eventDate.getDate() + day);
+    var timeParts = time.split(':');
+    eventDate.setHours(parseInt(timeParts[0]), parseInt(timeParts[1]), 0, 0);
+    var notifyAt = eventDate.getTime() - notifyMinutes * 60000;
+    cloudKey = saveReminderToCloud('אירוע בעוד ' + notifyMinutes + ' דקות', title, notifyAt);
+  }
   events[wk][day].push({
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    id: evId,
     title: title,
     time: time,
     notifyEnabled: notifyEnabled,
     notifyMinutes: notifyMinutes,
-    notifySent: false
+    notifySent: false,
+    reminderKey: cloudKey
   });
   saveEvents(events);
   document.getElementById('eventTitle').value = '';
@@ -605,6 +628,8 @@ function addEvent() {
 function deleteEvent(wk, day, id) {
   var events = loadEvents();
   if (events[wk] && events[wk][day]) {
+    var ev = events[wk][day].find(function(e) { return e.id === id; });
+    if (ev && ev.reminderKey) removeReminderFromCloud(ev.reminderKey);
     events[wk][day] = events[wk][day].filter(function(e) { return e.id !== id; });
     if (!events[wk][day].length) delete events[wk][day];
     if (!Object.keys(events[wk]).length) delete events[wk];
@@ -632,60 +657,87 @@ document.getElementById('nextWeek').addEventListener('click', function(e) {
   renderWeek();
 });
 
-// ---- Service Worker + Notifications ----
+// ---- Firebase + Push Notifications ----
+firebase.initializeApp({
+  apiKey: "AIzaSyCl91EW0vWjt4fbwCVEQn5xLjPNlR-_5LA",
+  authDomain: "oshaer-f2ae1.firebaseapp.com",
+  databaseURL: "https://oshaer-f2ae1-default-rtdb.firebaseio.com",
+  projectId: "oshaer-f2ae1",
+  storageBucket: "oshaer-f2ae1.firebasestorage.app",
+  messagingSenderId: "64655933064",
+  appId: "1:64655933064:web:6e86cb0640ff6a2c3da93d"
+});
+
+var fbMessaging = firebase.messaging();
+var fbDatabase = firebase.database();
+var fcmToken = null;
 var swRegistration = null;
 
-function initServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').then(function(reg) {
-      swRegistration = reg;
-      initNotifications();
-    }).catch(function() {
-      initNotifications();
+function saveReminderToCloud(title, body, timeMs) {
+  try {
+    if (!fcmToken) return null;
+    var ref = fbDatabase.ref('reminders').push({
+      token: fcmToken,
+      title: title,
+      body: body,
+      time: timeMs,
+      sent: false
     });
-  } else {
-    initNotifications();
-  }
+    return ref.key;
+  } catch(e) { return null; }
 }
 
-function sendNotification(title, body) {
+function removeReminderFromCloud(key) {
   try {
-    if (!('Notification' in window) || Notification.permission !== 'granted') return;
-    // Mobile requires service worker notifications
-    if (swRegistration) {
-      swRegistration.showNotification(title, {
+    if (key) fbDatabase.ref('reminders/' + key).remove();
+  } catch(e) {}
+}
+
+function initFCM() {
+  if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
+
+  navigator.serviceWorker.register('./sw.js').then(function(reg) {
+    swRegistration = reg;
+
+    // Handle foreground messages (show notification even when page is visible)
+    fbMessaging.onMessage(function(payload) {
+      var title = payload.notification ? payload.notification.title : 'תזכורת';
+      var body = payload.notification ? payload.notification.body : '';
+      reg.showNotification(title, {
         body: body,
-        icon: './favicon.ico',
         vibrate: [200, 100, 200],
-        tag: title,
+        tag: 'reminder-' + Date.now(),
         renotify: true
       });
-    } else {
-      new Notification(title, { body: body });
-    }
-  } catch(e) {}
-}
+    });
 
-function initNotifications() {
-  try {
-    if (!('Notification' in window)) return;
     if (Notification.permission === 'default') {
       Notification.requestPermission().then(function(result) {
-        if (result === 'granted') {
-          sendNotification('מנהל משימות', 'ההתראות הופעלו בהצלחה!');
-        }
+        if (result === 'granted') getFCMToken(reg);
       });
+    } else if (Notification.permission === 'granted') {
+      getFCMToken(reg);
     }
-  } catch(e) {}
-  // Start checking
-  checkThursdayNotification();
-  checkTaskReminders();
-  checkEventReminders();
-  setInterval(checkThursdayNotification, 3600000);
-  setInterval(checkTaskReminders, 60000);
-  setInterval(checkEventReminders, 60000);
+  }).catch(function(err) {
+    console.error('SW error:', err);
+  });
 }
 
+function getFCMToken(reg) {
+  fbMessaging.getToken({
+    vapidKey: 'BH9Y0WkZEhPuA_xn-xz20dF7tlRQFjhGmeNg1wHpa8YyMIVN3t_lDy_ZYhL4x_yH6-XW-Xd3mtfItGVHPtqNVXg',
+    serviceWorkerRegistration: reg
+  }).then(function(token) {
+    if (token) {
+      fcmToken = token;
+      localStorage.setItem('tm_fcm_token', token);
+    }
+  }).catch(function(err) {
+    console.error('FCM token error:', err);
+  });
+}
+
+// Thursday check (local fallback, works when page is open)
 function checkThursdayNotification() {
   try {
     var now = new Date();
@@ -697,67 +749,82 @@ function checkThursdayNotification() {
     var todayStr = localDateStr(now);
     if (lastNotif === todayStr) return;
     localStorage.setItem('tm_last_thu_notif', todayStr);
-    sendNotification('תזכורת שבועית - יום חמישי', 'יש לך ' + pending.length + ' משימות שלא הושלמו השבוע');
-  } catch(e) {}
-}
-
-function checkTaskReminders() {
-  try {
-    var now = new Date();
-    var tasks = loadTasks();
-    var changed = false;
-    tasks.forEach(function(t) {
-      if (t.reminder && !t.reminderSent && !t.done) {
-        if (now >= new Date(t.reminder)) {
-          sendNotification('תזכורת משימה: ' + t.title, t.desc || 'הגיע הזמן לטפל במשימה זו');
-          t.reminderSent = true;
-          changed = true;
-        }
-      }
-    });
-    if (changed) {
-      saveTasks(tasks);
-      renderTasks();
+    if (swRegistration) {
+      swRegistration.showNotification('תזכורת שבועית - יום חמישי', {
+        body: 'יש לך ' + pending.length + ' משימות שלא הושלמו השבוע',
+        vibrate: [200, 100, 200]
+      });
     }
   } catch(e) {}
 }
 
-function checkEventReminders() {
-  try {
-    var now = new Date();
-    var events = loadEvents();
-    var changed = false;
-    var thisWeek = getWeekStart(now);
-    var nextWeek = new Date(thisWeek);
-    nextWeek.setDate(nextWeek.getDate() + 7);
-    [thisWeek, nextWeek].forEach(function(weekStart) {
-      var wk = weekKey(weekStart);
-      if (!events[wk]) return;
-      for (var dayIdx = 0; dayIdx < 7; dayIdx++) {
-        var dayEvents = events[wk][dayIdx];
-        if (!dayEvents) continue;
-        dayEvents.forEach(function(ev) {
-          if (!ev.notifyEnabled || ev.notifySent || !ev.time) return;
-          var eventDate = new Date(weekStart);
-          eventDate.setDate(eventDate.getDate() + dayIdx);
-          var parts = ev.time.split(':');
-          eventDate.setHours(parseInt(parts[0]), parseInt(parts[1]), 0, 0);
-          var notifyAt = new Date(eventDate.getTime() - (ev.notifyMinutes || 0) * 60000);
-          if (now >= notifyAt && now < eventDate) {
-            sendNotification('אירוע בעוד ' + (ev.notifyMinutes || 0) + ' דקות', ev.title);
-            ev.notifySent = true;
-            changed = true;
-          }
-        });
-      }
-    });
-    if (changed) {
-      saveEvents(events);
-    }
-  } catch(e) {}
+// ---- App Icon + Manifest ----
+function generateIcon(size) {
+  var c = document.createElement('canvas');
+  c.width = c.height = size;
+  var ctx = c.getContext('2d');
+  var r = size * 0.18;
+  ctx.fillStyle = '#FFCFDE';
+  ctx.beginPath();
+  ctx.moveTo(r, 0);
+  ctx.lineTo(size - r, 0);
+  ctx.quadraticCurveTo(size, 0, size, r);
+  ctx.lineTo(size, size - r);
+  ctx.quadraticCurveTo(size, size, size - r, size);
+  ctx.lineTo(r, size);
+  ctx.quadraticCurveTo(0, size, 0, size - r);
+  ctx.lineTo(0, r);
+  ctx.quadraticCurveTo(0, 0, r, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#c0467e';
+  ctx.lineWidth = size * 0.08;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(size * 0.25, size * 0.52);
+  ctx.lineTo(size * 0.42, size * 0.7);
+  ctx.lineTo(size * 0.75, size * 0.3);
+  ctx.stroke();
+  return c.toDataURL('image/png');
 }
 
-initServiceWorker();
+try {
+  var icon192 = generateIcon(192);
+  var icon512 = generateIcon(512);
+  var appleIcon = document.createElement('link');
+  appleIcon.rel = 'apple-touch-icon';
+  appleIcon.href = icon192;
+  document.head.appendChild(appleIcon);
+  var favicon = document.createElement('link');
+  favicon.rel = 'icon';
+  favicon.type = 'image/png';
+  favicon.href = icon192;
+  document.head.appendChild(favicon);
+  var manifest = {
+    name: 'מנהל משימות',
+    short_name: 'משימות',
+    start_url: './',
+    display: 'standalone',
+    background_color: '#FFCFDE',
+    theme_color: '#FFCFDE',
+    dir: 'rtl',
+    lang: 'he',
+    icons: [
+      { src: icon192, sizes: '192x192', type: 'image/png' },
+      { src: icon512, sizes: '512x512', type: 'image/png', purpose: 'any' }
+    ]
+  };
+  var manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+  var manifestLink = document.createElement('link');
+  manifestLink.rel = 'manifest';
+  manifestLink.href = URL.createObjectURL(manifestBlob);
+  document.head.appendChild(manifestLink);
+} catch(e) {}
+
+checkThursdayNotification();
+setInterval(checkThursdayNotification, 3600000);
+initFCM();
 
 // ---- Init ----
 renderTasks();
