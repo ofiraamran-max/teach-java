@@ -274,9 +274,6 @@
     font-size: .95rem;
   }
 </style>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -657,103 +654,105 @@ document.getElementById('nextWeek').addEventListener('click', function(e) {
   renderWeek();
 });
 
-// ---- Firebase + Push Notifications ----
-firebase.initializeApp({
-  apiKey: "AIzaSyCl91EW0vWjt4fbwCVEQn5xLjPNlR-_5LA",
-  authDomain: "oshaer-f2ae1.firebaseapp.com",
-  databaseURL: "https://oshaer-f2ae1-default-rtdb.firebaseio.com",
-  projectId: "oshaer-f2ae1",
-  storageBucket: "oshaer-f2ae1.firebasestorage.app",
-  messagingSenderId: "64655933064",
-  appId: "1:64655933064:web:6e86cb0640ff6a2c3da93d"
-});
-
-var fbMessaging = firebase.messaging();
-var fbDatabase = firebase.database();
-var fcmToken = null;
-var swRegistration = null;
-
-function saveReminderToCloud(title, body, timeMs) {
-  try {
-    if (!fcmToken) return null;
-    var ref = fbDatabase.ref('reminders').push({
-      token: fcmToken,
-      title: title,
-      body: body,
-      time: timeMs,
-      sent: false
-    });
-    return ref.key;
-  } catch(e) { return null; }
+// ---- ntfy.sh Push Notifications ----
+// Generates a unique channel per device, stored in localStorage
+function getNtfyTopic() {
+  var topic = localStorage.getItem('tm_ntfy_topic');
+  if (!topic) {
+    topic = 'taskmanager-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+    localStorage.setItem('tm_ntfy_topic', topic);
+  }
+  return topic;
 }
 
-function removeReminderFromCloud(key) {
+var ntfyTopic = getNtfyTopic();
+
+function scheduleNotification(title, body, timeMs) {
   try {
-    if (key) fbDatabase.ref('reminders/' + key).remove();
+    var unixSec = Math.floor(timeMs / 1000);
+    fetch('https://ntfy.sh/' + ntfyTopic, {
+      method: 'POST',
+      headers: {
+        'Title': title,
+        'At': String(unixSec),
+        'Tags': 'bell'
+      },
+      body: body
+    }).catch(function() {});
   } catch(e) {}
 }
 
-function initFCM() {
-  if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
-
-  navigator.serviceWorker.register('./sw.js').then(function(reg) {
-    swRegistration = reg;
-
-    // Handle foreground messages (show notification even when page is visible)
-    fbMessaging.onMessage(function(payload) {
-      var title = payload.notification ? payload.notification.title : 'תזכורת';
-      var body = payload.notification ? payload.notification.body : '';
-      reg.showNotification(title, {
-        body: body,
-        vibrate: [200, 100, 200],
-        tag: 'reminder-' + Date.now(),
-        renotify: true
-      });
-    });
-
-    if (Notification.permission === 'default') {
-      Notification.requestPermission().then(function(result) {
-        if (result === 'granted') getFCMToken(reg);
-      });
-    } else if (Notification.permission === 'granted') {
-      getFCMToken(reg);
-    }
-  }).catch(function(err) {
-    console.error('SW error:', err);
-  });
+function sendNotificationNow(title, body) {
+  try {
+    fetch('https://ntfy.sh/' + ntfyTopic, {
+      method: 'POST',
+      headers: {
+        'Title': title,
+        'Tags': 'bell'
+      },
+      body: body
+    }).catch(function() {});
+  } catch(e) {}
 }
 
-function getFCMToken(reg) {
-  fbMessaging.getToken({
-    vapidKey: 'BH9Y0WkZEhPuA_xn-xz20dF7tlRQFjhGmeNg1wHpa8YyMIVN3t_lDy_ZYhL4x_yH6-XW-Xd3mtfItGVHPtqNVXg',
-    serviceWorkerRegistration: reg
-  }).then(function(token) {
-    if (token) {
-      fcmToken = token;
-      localStorage.setItem('tm_fcm_token', token);
-    }
-  }).catch(function(err) {
-    console.error('FCM token error:', err);
-  });
+function saveReminderToCloud(title, body, timeMs) {
+  scheduleNotification(title, body, timeMs);
+  return 'ntfy';
 }
 
-// Thursday check (local fallback, works when page is open)
-function checkThursdayNotification() {
+function removeReminderFromCloud(key) {
+  // ntfy doesn't support cancellation - no action needed
+}
+
+// Show ntfy setup instructions if first time
+function showNtfySetup() {
+  var shown = localStorage.getItem('tm_ntfy_setup_shown');
+  if (shown) return;
+  localStorage.setItem('tm_ntfy_setup_shown', '1');
+  var topic = ntfyTopic;
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+  overlay.innerHTML = '<div style="background:#fff;border-radius:16px;padding:24px;max-width:400px;width:100%;direction:rtl;text-align:right;">' +
+    '<h3 style="color:#c0467e;margin-bottom:12px;">הגדרת התראות</h3>' +
+    '<p style="margin-bottom:10px;">כדי לקבל התראות גם כשהאפליקציה סגורה:</p>' +
+    '<p style="margin-bottom:6px;"><b>1.</b> התקינו את אפליקציית <b>ntfy</b> מ-Google Play</p>' +
+    '<p style="margin-bottom:6px;"><b>2.</b> פתחו את ntfy ולחצו על <b>+</b></p>' +
+    '<p style="margin-bottom:6px;"><b>3.</b> הדביקו את הערוץ הזה:</p>' +
+    '<div style="background:#f5f5f5;padding:10px;border-radius:8px;margin:8px 0;direction:ltr;text-align:center;font-family:monospace;font-size:0.85rem;word-break:break-all;user-select:all;-webkit-user-select:all;" id="ntfyTopicDisplay">' + topic + '</div>' +
+    '<button onclick="navigator.clipboard.writeText(\'' + topic + '\');this.textContent=\'הועתק!\'" style="width:100%;padding:8px;background:#c0467e;color:#fff;border:none;border-radius:8px;font-size:0.9rem;margin-bottom:8px;cursor:pointer;">העתק ערוץ</button>' +
+    '<p style="font-size:0.8rem;color:#999;margin-bottom:12px;">לאחר ההתקנה, כל התראה שתגדירו תגיע ישירות לטלפון!</p>' +
+    '<button onclick="this.closest(\'div\').parentElement.remove()" style="width:100%;padding:10px;background:#eee;border:none;border-radius:8px;font-size:0.95rem;cursor:pointer;">הבנתי</button>' +
+  '</div>';
+  document.body.appendChild(overlay);
+}
+
+// Thursday weekly notification - schedule for next Thursday 9:00
+function scheduleThursdayNotification() {
   try {
     var now = new Date();
-    if (now.getDay() !== 4) return;
     var tasks = loadTasks();
     var pending = tasks.filter(function(t) { return !t.done && !t.recurring; });
     if (!pending.length) return;
-    var lastNotif = localStorage.getItem('tm_last_thu_notif');
-    var todayStr = localDateStr(now);
-    if (lastNotif === todayStr) return;
-    localStorage.setItem('tm_last_thu_notif', todayStr);
-    if (swRegistration) {
-      swRegistration.showNotification('תזכורת שבועית - יום חמישי', {
-        body: 'יש לך ' + pending.length + ' משימות שלא הושלמו השבוע',
-        vibrate: [200, 100, 200]
-      });
+
+    var lastScheduled = localStorage.getItem('tm_thu_scheduled');
+    var thisWeekStr = localDateStr(getWeekStart(now));
+    if (lastScheduled === thisWeekStr) return;
+
+    // Find next Thursday
+    var daysUntilThu = (4 - now.getDay() + 7) % 7;
+    if (daysUntilThu === 0 && now.getHours() >= 9) daysUntilThu = 7;
+    if (daysUntilThu === 0) daysUntilThu = 0; // today before 9am
+    var thu = new Date(now);
+    thu.setDate(thu.getDate() + daysUntilThu);
+    thu.setHours(9, 0, 0, 0);
+
+    if (thu > now) {
+      localStorage.setItem('tm_thu_scheduled', thisWeekStr);
+      scheduleNotification(
+        'תזכורת שבועית - יום חמישי',
+        'יש לך ' + pending.length + ' משימות שלא הושלמו השבוע',
+        thu.getTime()
+      );
     }
   } catch(e) {}
 }
@@ -822,9 +821,8 @@ try {
   document.head.appendChild(manifestLink);
 } catch(e) {}
 
-checkThursdayNotification();
-setInterval(checkThursdayNotification, 3600000);
-initFCM();
+scheduleThursdayNotification();
+showNtfySetup();
 
 // ---- Init ----
 renderTasks();
