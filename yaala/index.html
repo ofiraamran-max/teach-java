@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="משימות">
+<meta name="theme-color" content="#ffffff">
+<title>מנהל משימות</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html {
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+    background: #FFCFDE;
+    color: #333;
+    min-height: 100vh;
+    min-height: 100dvh;
+    direction: rtl;
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  input, textarea, select { -webkit-user-select: auto; user-select: auto; }
+
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    padding-top: env(safe-area-inset-top);
+  }
+  .header h1 {
+    text-align: center;
+    padding: 12px 0 4px;
+    font-size: 1.3rem;
+    color: #c0467e;
+  }
+  .tabs {
+    display: flex;
+  }
+  .tab-btn {
+    flex: 1;
+    padding: 12px 8px;
+    border: none;
+    background: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #999;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all .2s;
+  }
+  .tab-btn.active {
+    color: #c0467e;
+    border-bottom-color: #c0467e;
+  }
+
+  .container {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 12px;
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-bottom: 24px;
+  }
+
+  /* ---- Tasks Tab ---- */
+  .add-task-form {
+    background: #fff;
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 14px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  }
+  .add-task-form input,
+  .add-task-form textarea,
+  .add-task-form select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #e0c0cc;
+    border-radius: 10px;
+    font-size: .95rem;
+    margin-bottom: 8px;
+    font-family: inherit;
+    direction: rtl;
+  }
+  .add-task-form textarea { resize: vertical; min-height: 50px; }
+  .form-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .form-row select { flex: 1; min-width: 0; }
+  .recurring-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: .9rem;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .recurring-label input { width: auto; margin: 0; }
+  .btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 10px;
+    font-size: .95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .2s;
+  }
+  .btn:active { opacity: .7; }
+  .btn-primary { background: #c0467e; color: #fff; }
+  .btn-sm {
+    padding: 6px 12px;
+    font-size: .85rem;
+    border-radius: 8px;
+  }
+
+  .task-card {
+    background: #fff;
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    border-right: 5px solid #7eaef1;
+  }
+  .task-card.priority-urgent { border-right-color: #e74c3c; }
+  .task-card.priority-important { border-right-color: #f39c12; }
+  .task-card.priority-regular { border-right-color: #7eaef1; }
+  .task-card.done .task-title { text-decoration: line-through; color: #aaa; }
+  .task-card.done .task-desc { text-decoration: line-through; color: #bbb; }
+
+  .task-check {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    border: 2px solid #ccc;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    font-weight: 700;
+    font-size: 1rem;
+    color: transparent;
+    transition: all .2s;
+    background: #fff;
+  }
+  .task-card.done .task-check {
+    background: #27ae60;
+    border-color: #27ae60;
+    color: #fff;
+  }
+  .task-body { flex: 1; min-width: 0; }
+  .task-title { font-weight: 600; font-size: 1rem; word-break: break-word; }
+  .task-desc { font-size: .85rem; color: #777; margin-top: 2px; word-break: break-word; }
+  .task-badges { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+  .badge {
+    font-size: .75rem;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-weight: 600;
+  }
+  .badge-urgent { background: #fde2e2; color: #e74c3c; }
+  .badge-important { background: #fef3e0; color: #e67e22; }
+  .badge-regular { background: #e0eeff; color: #3e7ec0; }
+  .badge-recurring { background: #e8f5e9; color: #388e3c; }
+  .badge-reminder { background: #f3e5f5; color: #8e24aa; }
+
+  .task-delete {
+    background: none; border: none; font-size: 1.2rem; color: #ccc;
+    cursor: pointer; padding: 4px; flex-shrink: 0;
+  }
+  .task-delete:hover { color: #e74c3c; }
+
+  /* ---- Events Tab ---- */
+  .week-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #fff;
+    border-radius: 14px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  }
+  .week-nav button {
+    background: #c0467e; color: #fff; border: none;
+    border-radius: 8px; padding: 6px 14px; font-size: 1rem;
+    cursor: pointer;
+  }
+  .week-nav span { font-weight: 600; font-size: .95rem; }
+
+  .add-event-form {
+    background: #fff;
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 14px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  }
+  .add-event-form input,
+  .add-event-form select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #e0c0cc;
+    border-radius: 10px;
+    font-size: .95rem;
+    margin-bottom: 8px;
+    font-family: inherit;
+    direction: rtl;
+  }
+  .event-form-row {
+    display: flex;
+    gap: 8px;
+  }
+  .event-form-row select,
+  .event-form-row input { flex: 1; min-width: 0; }
+
+  .day-card {
+    background: #fff;
+    border-radius: 14px;
+    margin-bottom: 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    overflow: hidden;
+  }
+  .day-header {
+    background: #f8e0ea;
+    padding: 10px 14px;
+    font-weight: 700;
+    font-size: .95rem;
+    color: #c0467e;
+  }
+  .day-header.today { background: #c0467e; color: #fff; }
+  .event-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid #f5f0f2;
+    gap: 8px;
+  }
+  .event-item:last-child { border-bottom: none; }
+  .event-time { font-weight: 600; font-size: .9rem; color: #c0467e; white-space: nowrap; }
+  .event-title-text { flex: 1; font-size: .95rem; word-break: break-word; }
+  .event-notify-badge {
+    font-size: .7rem; padding: 1px 6px; border-radius: 5px;
+    background: #f3e5f5; color: #8e24aa; font-weight: 600; white-space: nowrap;
+  }
+  .event-delete {
+    background: none; border: none; color: #ccc; font-size: 1.1rem;
+    cursor: pointer; padding: 4px;
+  }
+  .event-delete:hover { color: #e74c3c; }
+  .no-events { padding: 10px 14px; color: #bbb; font-size: .85rem; }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: #c0a0b0;
+    font-size: .95rem;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>מנהל משימות</h1>
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="events">יומן אירועים שבועי</button>
+    <button class="tab-btn" data-tab="tasks">משימות שבועיות</button>
+  </div>
+</div>
+
+<!-- Events Tab -->
+<div id="tab-events" class="tab-content active">
+  <div class="container">
+    <div class="week-nav">
+      <button id="prevWeek">→</button>
+      <span id="weekLabel"></span>
+      <button id="nextWeek">←</button>
+    </div>
+    <div class="add-event-form">
+      <input type="text" id="eventTitle" placeholder="כותרת אירוע">
+      <div class="event-form-row">
+        <select id="eventDay"></select>
+        <input type="time" id="eventTime">
+      </div>
+      <div class="event-form-row" style="margin-top:0;">
+        <label style="font-size:.85rem;color:#8e24aa;white-space:nowrap;display:flex;align-items:center;gap:4px;">
+          <input type="checkbox" id="eventNotifyToggle" style="width:auto;margin:0;"> התראה
+        </label>
+        <input type="number" id="eventNotifyMinutes" placeholder="דקות לפני" min="0" value="15" style="flex:1;min-width:0;">
+      </div>
+      <button class="btn btn-primary" id="addEventBtn" style="width:100%;margin-top:4px;">הוסף אירוע</button>
+    </div>
+    <div id="weekView"></div>
+  </div>
+</div>
+
+<!-- Tasks Tab -->
+<div id="tab-tasks" class="tab-content">
+  <div class="container">
+    <div class="add-task-form">
+      <input type="text" id="taskTitle" placeholder="כותרת משימה">
+      <textarea id="taskDesc" placeholder="תיאור (אופציונלי)"></textarea>
+      <div class="form-row">
+        <select id="taskPriority">
+          <option value="urgent">דחוף</option>
+          <option value="important">חשוב</option>
+          <option value="regular" selected>רגיל</option>
+        </select>
+        <label class="recurring-label">
+          <input type="checkbox" id="taskRecurring"> חוזר
+        </label>
+      </div>
+      <div class="form-row" style="margin-top:4px;align-items:center;">
+        <label style="font-size:.85rem;color:#8e24aa;white-space:nowrap;">🔔 התראה:</label>
+        <input type="datetime-local" id="taskReminder" style="flex:1;min-width:0;">
+        <button class="btn btn-primary" id="addTaskBtn">הוסף</button>
+      </div>
+    </div>
+    <div id="taskList"></div>
+  </div>
+</div>
+
+<script>
+// ---- Constants ----
+var HEB_DAYS = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+var PRIORITY_MAP = {
+  urgent: { label: 'דחוף', cls: 'urgent' },
+  important: { label: 'חשוב', cls: 'important' },
+  regular: { label: 'רגיל', cls: 'regular' }
+};
+
+// ---- Helpers ----
+function esc(s) {
+  var d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// Local date string YYYY-MM-DD (fixes timezone bug with toISOString)
+function localDateStr(d) {
+  var y = d.getFullYear();
+  var m = String(d.getMonth() + 1).padStart(2, '0');
+  var day = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
+}
+
+function formatDate(d) {
+  return d.getDate() + '/' + (d.getMonth() + 1);
+}
+
+function formatReminderDisplay(dtStr) {
+  var d = new Date(dtStr);
+  return d.getDate() + '/' + (d.getMonth() + 1) + ' ' +
+    String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+// ---- State ----
+var currentWeekStart = getWeekStart(new Date());
+
+function getWeekStart(date) {
+  var d = new Date(date);
+  d.setDate(d.getDate() - d.getDay());
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function weekKey(date) {
+  return localDateStr(date);
+}
+
+// ---- Storage ----
+function loadTasks() {
+  try { return JSON.parse(localStorage.getItem('tm_tasks')) || []; }
+  catch(e) { return []; }
+}
+function saveTasks(tasks) {
+  try { localStorage.setItem('tm_tasks', JSON.stringify(tasks)); } catch(e) {}
+}
+function loadEvents() {
+  try { return JSON.parse(localStorage.getItem('tm_events')) || {}; }
+  catch(e) { return {}; }
+}
+function saveEvents(events) {
+  try { localStorage.setItem('tm_events', JSON.stringify(events)); } catch(e) {}
+}
+
+// ---- Tabs (event delegation on header) ----
+document.querySelector('.tabs').addEventListener('click', function(e) {
+  var btn = e.target.closest('.tab-btn');
+  if (!btn) return;
+  e.preventDefault();
+  e.stopPropagation();
+  document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+  btn.classList.add('active');
+  document.getElementById('tab-' + btn.getAttribute('data-tab')).classList.add('active');
+});
+
+// ---- Tasks (event delegation) ----
+document.getElementById('taskList').addEventListener('click', function(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  var check = e.target.closest('.task-check');
+  if (check) {
+    var card = check.closest('.task-card');
+    if (card) toggleTask(card.getAttribute('data-id'));
+    return;
+  }
+  var del = e.target.closest('.task-delete');
+  if (del) {
+    var card = del.closest('.task-card');
+    if (card) deleteTask(card.getAttribute('data-id'));
+    return;
+  }
+});
+
+function renderTasks() {
+  var tasks = loadTasks();
+  var list = document.getElementById('taskList');
+  if (!tasks.length) {
+    list.innerHTML = '<div class="empty-state">אין משימות עדיין</div>';
+    return;
+  }
+  var order = { urgent: 0, important: 1, regular: 2 };
+  var sorted = tasks.slice().sort(function(a, b) {
+    if (a.done !== b.done) return a.done ? 1 : -1;
+    return (order[a.priority] || 2) - (order[b.priority] || 2);
+  });
+  list.innerHTML = sorted.map(function(t) {
+    var p = PRIORITY_MAP[t.priority] || PRIORITY_MAP.regular;
+    var reminderBadge = '';
+    if (t.reminder && !t.done) {
+      var isPast = new Date(t.reminder) < new Date();
+      reminderBadge = '<span class="badge badge-reminder">' + (isPast ? '⏰ עבר ' : '⏰ ') + formatReminderDisplay(t.reminder) + '</span>';
+    }
+    return '<div class="task-card priority-' + p.cls + (t.done ? ' done' : '') + '" data-id="' + t.id + '">' +
+      '<div class="task-check">V</div>' +
+      '<div class="task-body">' +
+        '<div class="task-title">' + esc(t.title) + '</div>' +
+        (t.desc ? '<div class="task-desc">' + esc(t.desc) + '</div>' : '') +
+        '<div class="task-badges">' +
+          '<span class="badge badge-' + p.cls + '">' + p.label + '</span>' +
+          (t.recurring ? '<span class="badge badge-recurring">חוזר</span>' : '') +
+          reminderBadge +
+        '</div>' +
+      '</div>' +
+      '<button class="task-delete" type="button">✕</button>' +
+    '</div>';
+  }).join('');
+}
+
+function addTask() {
+  var title = document.getElementById('taskTitle').value.trim();
+  if (!title) return;
+  var tasks = loadTasks();
+  var reminder = document.getElementById('taskReminder').value || '';
+  tasks.push({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    title: title,
+    desc: document.getElementById('taskDesc').value.trim(),
+    priority: document.getElementById('taskPriority').value,
+    recurring: document.getElementById('taskRecurring').checked,
+    reminder: reminder,
+    reminderSent: false,
+    done: false
+  });
+  saveTasks(tasks);
+  document.getElementById('taskTitle').value = '';
+  document.getElementById('taskDesc').value = '';
+  document.getElementById('taskRecurring').checked = false;
+  document.getElementById('taskPriority').value = 'regular';
+  document.getElementById('taskReminder').value = '';
+  renderTasks();
+}
+
+function toggleTask(id) {
+  var tasks = loadTasks();
+  var t = tasks.find(function(x) { return x.id === id; });
+  if (t) t.done = !t.done;
+  saveTasks(tasks);
+  renderTasks();
+}
+
+function deleteTask(id) {
+  saveTasks(loadTasks().filter(function(x) { return x.id !== id; }));
+  renderTasks();
+}
+
+document.getElementById('addTaskBtn').addEventListener('click', function(e) {
+  e.preventDefault();
+  addTask();
+});
+document.getElementById('taskTitle').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') { e.preventDefault(); addTask(); }
+});
+
+// ---- Events (event delegation) ----
+document.getElementById('weekView').addEventListener('click', function(e) {
+  var del = e.target.closest('.event-delete');
+  if (!del) return;
+  e.preventDefault();
+  e.stopPropagation();
+  var wk = del.getAttribute('data-wk');
+  var day = parseInt(del.getAttribute('data-day'));
+  var id = del.getAttribute('data-eid');
+  deleteEvent(wk, day, id);
+});
+
+function populateDaySelect() {
+  var sel = document.getElementById('eventDay');
+  sel.innerHTML = HEB_DAYS.map(function(name, i) {
+    return '<option value="' + i + '">יום ' + name + '</option>';
+  }).join('');
+}
+populateDaySelect();
+
+function renderWeek() {
+  var wk = weekKey(currentWeekStart);
+  var end = new Date(currentWeekStart);
+  end.setDate(end.getDate() + 6);
+  document.getElementById('weekLabel').textContent =
+    formatDate(currentWeekStart) + ' - ' + formatDate(end);
+
+  var events = loadEvents();
+  var weekEvents = events[wk] || {};
+  var todayStr = localDateStr(new Date());
+  var view = document.getElementById('weekView');
+
+  var html = '';
+  for (var i = 0; i < 7; i++) {
+    var dayDate = new Date(currentWeekStart);
+    dayDate.setDate(dayDate.getDate() + i);
+    var dayStr = localDateStr(dayDate);
+    var isToday = dayStr === todayStr;
+    var dayEvents = (weekEvents[i] || []).slice().sort(function(a, b) {
+      return (a.time || '').localeCompare(b.time || '');
+    });
+
+    html += '<div class="day-card">' +
+      '<div class="day-header' + (isToday ? ' today' : '') + '">יום ' + HEB_DAYS[i] + ' - ' + formatDate(dayDate) + '</div>';
+    if (dayEvents.length) {
+      html += dayEvents.map(function(ev) {
+        var notifyTag = '';
+        if (ev.notifyMinutes >= 0 && ev.notifyEnabled) {
+          notifyTag = '<span class="event-notify-badge">🔔 ' + ev.notifyMinutes + ' דק׳</span>';
+        }
+        return '<div class="event-item">' +
+          '<span class="event-time">' + (ev.time || '--:--') + '</span>' +
+          '<span class="event-title-text">' + esc(ev.title) + ' ' + notifyTag + '</span>' +
+          '<button class="event-delete" type="button" data-wk="' + wk + '" data-day="' + i + '" data-eid="' + ev.id + '">✕</button>' +
+        '</div>';
+      }).join('');
+    } else {
+      html += '<div class="no-events">אין אירועים</div>';
+    }
+    html += '</div>';
+  }
+  view.innerHTML = html;
+}
+
+function addEvent() {
+  var title = document.getElementById('eventTitle').value.trim();
+  if (!title) return;
+  var day = parseInt(document.getElementById('eventDay').value);
+  var time = document.getElementById('eventTime').value;
+  var wk = weekKey(currentWeekStart);
+  var events = loadEvents();
+  if (!events[wk]) events[wk] = {};
+  if (!events[wk][day]) events[wk][day] = [];
+  var notifyEnabled = document.getElementById('eventNotifyToggle').checked;
+  var notifyMinutes = parseInt(document.getElementById('eventNotifyMinutes').value) || 0;
+  events[wk][day].push({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    title: title,
+    time: time,
+    notifyEnabled: notifyEnabled,
+    notifyMinutes: notifyMinutes,
+    notifySent: false
+  });
+  saveEvents(events);
+  document.getElementById('eventTitle').value = '';
+  document.getElementById('eventTime').value = '';
+  document.getElementById('eventNotifyToggle').checked = false;
+  document.getElementById('eventNotifyMinutes').value = '15';
+  renderWeek();
+}
+
+function deleteEvent(wk, day, id) {
+  var events = loadEvents();
+  if (events[wk] && events[wk][day]) {
+    events[wk][day] = events[wk][day].filter(function(e) { return e.id !== id; });
+    if (!events[wk][day].length) delete events[wk][day];
+    if (!Object.keys(events[wk]).length) delete events[wk];
+  }
+  saveEvents(events);
+  renderWeek();
+}
+
+document.getElementById('addEventBtn').addEventListener('click', function(e) {
+  e.preventDefault();
+  addEvent();
+});
+document.getElementById('eventTitle').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') { e.preventDefault(); addEvent(); }
+});
+
+document.getElementById('prevWeek').addEventListener('click', function(e) {
+  e.preventDefault();
+  currentWeekStart.setDate(currentWeekStart.getDate() - 7);
+  renderWeek();
+});
+document.getElementById('nextWeek').addEventListener('click', function(e) {
+  e.preventDefault();
+  currentWeekStart.setDate(currentWeekStart.getDate() + 7);
+  renderWeek();
+});
+
+// ---- Notifications (all wrapped in try-catch) ----
+function tryRequestNotificationPermission() {
+  try {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  } catch(e) {}
+}
+
+function sendNotification(title, body) {
+  try {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, { body: body });
+    }
+  } catch(e) {}
+}
+
+function checkThursdayNotification() {
+  try {
+    var now = new Date();
+    if (now.getDay() !== 4) return;
+    var tasks = loadTasks();
+    var pending = tasks.filter(function(t) { return !t.done && !t.recurring; });
+    if (!pending.length) return;
+    var lastNotif = localStorage.getItem('tm_last_thu_notif');
+    var todayStr = localDateStr(now);
+    if (lastNotif === todayStr) return;
+    localStorage.setItem('tm_last_thu_notif', todayStr);
+    sendNotification('תזכורת שבועית - יום חמישי', 'יש לך ' + pending.length + ' משימות שלא הושלמו השבוע');
+  } catch(e) {}
+}
+
+function checkTaskReminders() {
+  try {
+    var now = new Date();
+    var tasks = loadTasks();
+    var changed = false;
+    tasks.forEach(function(t) {
+      if (t.reminder && !t.reminderSent && !t.done) {
+        if (now >= new Date(t.reminder)) {
+          sendNotification('תזכורת: ' + t.title, t.desc || 'הגיע הזמן לטפל במשימה זו');
+          t.reminderSent = true;
+          changed = true;
+        }
+      }
+    });
+    if (changed) {
+      saveTasks(tasks);
+      renderTasks();
+    }
+  } catch(e) {}
+}
+
+function checkEventReminders() {
+  try {
+    var now = new Date();
+    var events = loadEvents();
+    var changed = false;
+    // Check current week and next week
+    var thisWeek = getWeekStart(now);
+    var nextWeek = new Date(thisWeek);
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    [thisWeek, nextWeek].forEach(function(weekStart) {
+      var wk = weekKey(weekStart);
+      if (!events[wk]) return;
+      for (var dayIdx = 0; dayIdx < 7; dayIdx++) {
+        var dayEvents = events[wk][dayIdx];
+        if (!dayEvents) continue;
+        dayEvents.forEach(function(ev) {
+          if (!ev.notifyEnabled || ev.notifySent || !ev.time) return;
+          var eventDate = new Date(weekStart);
+          eventDate.setDate(eventDate.getDate() + dayIdx);
+          var parts = ev.time.split(':');
+          eventDate.setHours(parseInt(parts[0]), parseInt(parts[1]), 0, 0);
+          var notifyAt = new Date(eventDate.getTime() - (ev.notifyMinutes || 0) * 60000);
+          if (now >= notifyAt && now < eventDate) {
+            sendNotification('🔔 אירוע בעוד ' + (ev.notifyMinutes || 0) + ' דקות', ev.title);
+            ev.notifySent = true;
+            changed = true;
+          }
+        });
+      }
+    });
+    if (changed) {
+      saveEvents(events);
+    }
+  } catch(e) {}
+}
+
+tryRequestNotificationPermission();
+checkThursdayNotification();
+checkTaskReminders();
+checkEventReminders();
+setInterval(checkThursdayNotification, 3600000);
+setInterval(checkTaskReminders, 60000);
+setInterval(checkEventReminders, 60000);
+
+// ---- Init ----
+renderTasks();
+renderWeek();
+</script>
+</body>
+</html>
