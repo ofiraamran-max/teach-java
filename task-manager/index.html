@@ -692,27 +692,31 @@ var ntfyTopic = getNtfyTopic();
 function scheduleNotification(title, body, timeMs) {
   try {
     var unixSec = Math.floor(timeMs / 1000);
-    fetch('https://ntfy.sh/' + ntfyTopic, {
+    fetch('https://ntfy.sh', {
       method: 'POST',
-      headers: {
-        'Title': title,
-        'At': String(unixSec),
-        'Tags': 'bell'
-      },
-      body: body
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        topic: ntfyTopic,
+        title: title,
+        message: body,
+        tags: ['bell'],
+        at: unixSec
+      })
     }).catch(function() {});
   } catch(e) {}
 }
 
 function sendNotificationNow(title, body) {
   try {
-    fetch('https://ntfy.sh/' + ntfyTopic, {
+    fetch('https://ntfy.sh', {
       method: 'POST',
-      headers: {
-        'Title': title,
-        'Tags': 'bell'
-      },
-      body: body
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        topic: ntfyTopic,
+        title: title,
+        message: body,
+        tags: ['bell']
+      })
     }).catch(function() {});
   } catch(e) {}
 }
@@ -863,10 +867,15 @@ document.getElementById('testNotifyBtn').addEventListener('click', function(e) {
   var resultEl = document.getElementById('testResult');
   resultEl.textContent = 'שולח...';
   resultEl.style.color = '#777';
-  fetch('https://ntfy.sh/' + ntfyTopic, {
+  fetch('https://ntfy.sh', {
     method: 'POST',
-    headers: { 'Title': 'בדיקה - מנהל משימות', 'Tags': 'white_check_mark' },
-    body: 'אם אתם רואים הודעה זו, ההתראות עובדות!'
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      topic: ntfyTopic,
+      title: 'בדיקה - מנהל משימות',
+      message: 'אם אתם רואים הודעה זו, ההתראות עובדות!',
+      tags: ['white_check_mark']
+    })
   }).then(function(res) {
     if (res.ok) {
       resultEl.textContent = 'נשלח! בדקו אם קיבלתם התראה באפליקציית ntfy';
