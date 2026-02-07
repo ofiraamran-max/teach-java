@@ -694,7 +694,11 @@ var ntfyIcon = 'https://ofiraamran-max.github.io/task-manager/icon.png';
 
 function scheduleNotification(title, body, timeMs) {
   try {
-    var unixSec = Math.floor(timeMs / 1000);
+    var delaySec = Math.max(0, Math.floor((timeMs - Date.now()) / 1000));
+    if (delaySec <= 0) {
+      sendNotificationNow(title, body);
+      return;
+    }
     fetch('https://ntfy.sh', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -702,8 +706,7 @@ function scheduleNotification(title, body, timeMs) {
         topic: ntfyTopic,
         title: title,
         message: body,
-        tags: ['bell'],
-        at: unixSec,
+        delay: delaySec + 's',
         icon: ntfyIcon
       })
     }).catch(function() {});
@@ -719,7 +722,6 @@ function sendNotificationNow(title, body) {
         topic: ntfyTopic,
         title: title,
         message: body,
-        tags: ['bell'],
         icon: ntfyIcon
       })
     }).catch(function() {});
@@ -899,7 +901,6 @@ document.getElementById('testNotifyBtn').addEventListener('click', function(e) {
       topic: ntfyTopic,
       title: 'בדיקה - מנהל משימות',
       message: 'אם אתם רואים הודעה זו, ההתראות עובדות!',
-      tags: ['white_check_mark'],
       icon: ntfyIcon
     })
   }).then(function(res) {
